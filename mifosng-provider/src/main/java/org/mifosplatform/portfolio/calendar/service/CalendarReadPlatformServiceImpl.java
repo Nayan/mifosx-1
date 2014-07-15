@@ -17,6 +17,7 @@ import org.mifosplatform.infrastructure.core.domain.JdbcSupport;
 import org.mifosplatform.infrastructure.core.service.DateUtils;
 import org.mifosplatform.infrastructure.core.service.RoutingDataSource;
 import org.mifosplatform.portfolio.calendar.data.CalendarData;
+import org.mifosplatform.portfolio.calendar.data.FutureCalendarData;
 import org.mifosplatform.portfolio.calendar.domain.CalendarEntityType;
 import org.mifosplatform.portfolio.calendar.domain.CalendarType;
 import org.mifosplatform.portfolio.calendar.exception.CalendarNotFoundException;
@@ -227,6 +228,33 @@ public class CalendarReadPlatformServiceImpl implements CalendarReadPlatformServ
 
         final Collection<LocalDate> recurringDates = CalendarUtils.getRecurringDates(rrule, seedDate, periodStartDate, periodEndDate,
                 maxCount);
+        return recurringDates;
+    }
+    
+    @Override
+    public Collection<LocalDate> generateRemainingRecurringDates(final FutureCalendarData futureCalendarData,
+    		final int maxAllowedPersistedMeetingDates) {
+    	
+    	final int maxCount = maxAllowedPersistedMeetingDates - futureCalendarData.getNumberOfFutureCalendars();
+    	
+    	final String rrule = futureCalendarData.getRecurrence();
+    	
+    	LocalDate fromDate = futureCalendarData.getFromDate();
+    	
+    	if(fromDate != null)
+    		fromDate = fromDate.plusDays(1);
+    	else 
+    		fromDate = DateUtils.getLocalDateOfTenant();
+    	
+        final LocalDate seedDate = this.getSeedDate(futureCalendarData.getStartDate());
+        
+        final LocalDate periodStartDate = this.getPeriodStartDate(seedDate, futureCalendarData.getStartDate(), fromDate);
+        
+    	final LocalDate periodEndDate = this.getPeriodEndDate(null, null);
+    	
+    	final Collection<LocalDate> recurringDates = CalendarUtils.getRecurringDates(rrule, seedDate, periodStartDate, periodEndDate,
+                maxCount);
+    	
         return recurringDates;
     }
 
