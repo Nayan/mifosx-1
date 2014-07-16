@@ -199,11 +199,9 @@ public class CalendarWritePlatformServiceJpaRepositoryImpl implements CalendarWr
                 this.calendarHistoryRepository.save(calendarHistory);
             }
             
-            
             this.calendarRepository.saveAndFlush(calendarForUpdate);
             
-            String title = calendarForUpdate.getTitle();
-//            this.calendarDateRepository.deleteProductByEntityTypeAndEntityId(calendarForUpdate.getTypeId(), entityId);
+            deleteMeetingDatesOnCenterCalendarUpdate(command);
             
             if (this.configurationDomainService.isRescheduleFutureRepaymentsEnabled() && calendarForUpdate.isRepeating()) {
                 // fetch all loan calendar instances associated with modifying
@@ -269,24 +267,23 @@ public class CalendarWritePlatformServiceJpaRepositoryImpl implements CalendarWr
     private static final class FutureCenterCalendarMapper implements RowMapper<FutureCalendarData> {
 
         public String schema() {
-            return "c.recurrence as recurrence, c.start_date as start_date, ci.entity_type_enum as entity_type, " 
-            + "ci.entity_id as entity_id, count(ccd.id) As number_of_future_meetings, max(ccd.meeting_date) As last_future_meeting_date "
+            return "c.recurrence as recurrence, c.start_date as start_date, ci.id as calendar_instance_id, " 
+            + " count(ccd.id) As number_of_future_meetings, max(ccd.meeting_date) As last_future_meeting_date "
             + "from m_calendar_instance ci inner join m_calendar c on c.id = ci.calendar_id and ci.entity_type_enum = 4 "
-            + "left join ct_calendar_dates ccd on ccd.entity_type_id = ci.entity_type_enum "
-            + "and ccd.entity_id = ci.entity_id and ccd.meeting_date >= curdate()";
+            + "left join ct_calendar_dates ccd on ccd.calendar_instance_id = ci.id "
+            + " and ccd.meeting_date >= curdate()";
         }
 
         @Override
         public FutureCalendarData mapRow(final ResultSet rs, @SuppressWarnings("unused") final int rowNum) throws SQLException {
 
-            final Long entityId = rs.getLong("entity_id");
-            final Integer entityTypeEnum = rs.getInt("entity_type");
+            final Long calendarInstanceId = rs.getLong("calendar_instance_id");
             final int numberOfFutureMeetings = rs.getInt("number_of_future_meetings");
             final LocalDate fromDate = JdbcSupport.getLocalDate(rs, "last_future_meeting_date");
             final String recurrence = rs.getString("recurrence");
             final LocalDate startDate = JdbcSupport.getLocalDate(rs, "start_date");
 
-            return new FutureCalendarData(numberOfFutureMeetings, fromDate, entityTypeEnum, entityId, startDate, recurrence);
+            return new FutureCalendarData(numberOfFutureMeetings, fromDate, calendarInstanceId, startDate, recurrence);
         }
     }
     
@@ -338,10 +335,32 @@ public class CalendarWritePlatformServiceJpaRepositoryImpl implements CalendarWr
     					.generateRemainingRecurringDates(futureCalendar, maxAllowedPersistedCalendarDates));
     			CalendarDate calendarDate = null;
     			for(LocalDate futureDate : remainingRecurringDates) {
-    				calendarDate = new CalendarDate(futureDate, futureCalendar.getEntityTypeEnum(), futureCalendar.getEntityId());
+    				calendarDate = new CalendarDate(futureDate, futureCalendar.getCalendarInstanceId());
     				this.calendarDateRepository.save(calendarDate);
     			}
     		}
     	}
+    }
+    
+    private void deleteMeetingDatesOnCenterCalendarUpdate(final JsonCommand command) {
+    	
+    	Long entityId = null;
+    	CalendarEntityType entityType = CalendarEntityType.INVALID;
+    	
+    	if (command.getGroupId() != null) {
+    		entityId = command.getGroupId();
+            final Group group = this.groupRepository.findOneWithNotFoundDetection(entityId);
+            if (group.isCenter()) {
+                entityType = CalendarEntityType.CENTERS;
+            } else if (group.isChildGroup()) {
+                entityType = CalendarEntityType.CENTERS;
+                entityId = group.getParent().getId();
+            }
+            final CalendarInstance calendarInstance = this.calendarInstanceRepository.findByCalendarIdAndEntityIdAndEntityTypeId(
+                    command.entityId(), entityId, entityType.getValue());
+            this.calendarDateRepository.deleteCalendarDateByCalendarInstanceId(calendarInstance.getId());
+        }
+    	
+        
     }
 }

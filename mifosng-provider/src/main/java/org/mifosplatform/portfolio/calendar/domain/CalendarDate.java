@@ -12,31 +12,28 @@ import org.joda.time.LocalDate;
 import org.springframework.data.jpa.domain.AbstractPersistable;
 
 @Entity
-@Table(name = "ct_meeting_dates")
+@Table(name = "ct_calendar_dates")
 public class CalendarDate extends AbstractPersistable<Long> {
 	
-	@Column(name = "entity_id", nullable = false)
-    private Long entityId;
-
-    @Column(name = "entity_type_id", nullable = false)
-    private Integer entityTypeId;
+	@Column(name = "calendar_instance_id", nullable = false)
+    private Long calendarInstanceId;
 	
 	@Temporal(TemporalType.DATE)
     @Column(name = "meeting_date", nullable = false)
     private final Date meetingDate;
+	
+	public CalendarDate() {
+		this.meetingDate = null;
+        this.calendarInstanceId = null;
+	}
 
-	public CalendarDate(final LocalDate endOfBalanceDate, final Integer entityTypeId, final Long entityId) {
+	public CalendarDate(final LocalDate endOfBalanceDate, final Long calendarInstanceId) {
         this.meetingDate = endOfBalanceDate.toDate();
-        this.entityId = entityId;
-        this.entityTypeId = entityTypeId;
+        this.calendarInstanceId = calendarInstanceId;
     }
 	
-	public Long getEntityId() {
-	    return this.entityId;
-	}
-	
-	public Integer getEntityTypeId() {
-	    return this.entityTypeId;
+	public Long getCalendarInstanceId() {
+	    return this.calendarInstanceId;
 	}
 	
 	public Date getMeetingDate() {
