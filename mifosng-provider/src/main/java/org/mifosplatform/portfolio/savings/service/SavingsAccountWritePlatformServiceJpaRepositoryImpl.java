@@ -79,6 +79,8 @@ import org.mifosplatform.portfolio.savings.exception.SavingsAccountTransactionNo
 import org.mifosplatform.portfolio.savings.exception.TransactionUpdateNotAllowedException;
 import org.mifosplatform.useradministration.domain.AppUser;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -323,6 +325,14 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
                 .withSavingsId(savingsId) //
                 .build();
     }
+    
+    @Transactional
+    private void postInterestInBatch(final Page<SavingsAccount> accounts) {
+    	for(final SavingsAccount savingsAccount : accounts) {
+    		this.savingAccountAssembler.assignSavingAccountHelpers(savingsAccount);
+    		postInterest(savingsAccount);
+    	}
+    }
 
     @Transactional
     private void postInterest(final SavingsAccount account) {
@@ -352,12 +362,18 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
     @CronTarget(jobName = JobName.POST_INTEREST_FOR_SAVINGS)
     @Override
     public void postInterestForAccounts() {
-        final List<SavingsAccount> savingsAccounts = this.savingAccountRepository.findSavingAccountByStatus(SavingsAccountStatusType.ACTIVE
-                .getValue());
-        for (final SavingsAccount savingsAccount : savingsAccounts) {
-            this.savingAccountAssembler.assignSavingAccountHelpers(savingsAccount);
-            postInterest(savingsAccount);
+    	final int maxPageSize = 500;
+    	int pageNumber = 0;
+        Page<SavingsAccount> savingsAccounts = this.savingAccountRepository.findSavingAccountByStatus(SavingsAccountStatusType.ACTIVE
+                .getValue(), new PageRequest(pageNumber, maxPageSize));
+        postInterestInBatch(savingsAccounts);
+        while(savingsAccounts.hasNextPage()) {
+        	pageNumber++;
+        	savingsAccounts = this.savingAccountRepository.findSavingAccountByStatus(SavingsAccountStatusType.ACTIVE
+                    .getValue(), new PageRequest(pageNumber, maxPageSize));
+        	postInterestInBatch(savingsAccounts);
         }
+        
     }
 
     @Override

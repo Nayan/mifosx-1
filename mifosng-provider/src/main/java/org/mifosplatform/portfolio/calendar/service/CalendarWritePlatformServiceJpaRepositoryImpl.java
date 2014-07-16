@@ -331,7 +331,7 @@ public class CalendarWritePlatformServiceJpaRepositoryImpl implements CalendarWr
     		
     		int numberOfFutureCalendars = futureCalendar.getNumberOfFutureCalendars();
     		if(numberOfFutureCalendars < 10) {
-    			final Set<LocalDate> remainingRecurringDates = new HashSet<LocalDate>(this.calendarReadPlatformService
+    			final Set<LocalDate> remainingRecurringDates = new HashSet<>(this.calendarReadPlatformService
     					.generateRemainingRecurringDates(futureCalendar, maxAllowedPersistedCalendarDates));
     			CalendarDate calendarDate = null;
     			for(LocalDate futureDate : remainingRecurringDates) {

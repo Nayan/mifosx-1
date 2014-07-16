@@ -7,6 +7,8 @@ package org.mifosplatform.portfolio.savings.domain;
 
 import java.util.List;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
@@ -18,7 +20,7 @@ public interface SavingsAccountRepository extends JpaRepository<SavingsAccount, 
     List<SavingsAccount> findSavingAccountByClientId(@Param("clientId") Long clientId);
 
     @Query("from SavingsAccount s_acc where s_acc.status = :status")
-    List<SavingsAccount> findSavingAccountByStatus(@Param("status") Integer status);
+    Page<SavingsAccount> findSavingAccountByStatus(@Param("status") Integer status, Pageable pageable);
 
     @Query("from SavingsAccount sa where sa.client.id = :clientId and sa.group.id = :groupId")
     List<SavingsAccount> findByClientIdAndGroupId(@Param("clientId") Long clientId, @Param("groupId") Long groupId);
