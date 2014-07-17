@@ -33,6 +33,10 @@ import org.mifosplatform.organisation.office.exception.InvalidOfficeException;
 import org.mifosplatform.organisation.office.exception.OfficeNotFoundException;
 import org.mifosplatform.organisation.staff.domain.Staff;
 import org.mifosplatform.organisation.staff.domain.StaffRepositoryWrapper;
+import org.mifosplatform.portfolio.calendar.domain.CalendarDateRepository;
+import org.mifosplatform.portfolio.calendar.domain.CalendarEntityType;
+import org.mifosplatform.portfolio.calendar.domain.CalendarInstance;
+import org.mifosplatform.portfolio.calendar.domain.CalendarInstanceRepository;
 import org.mifosplatform.portfolio.client.domain.Client;
 import org.mifosplatform.portfolio.client.domain.ClientRepositoryWrapper;
 import org.mifosplatform.portfolio.client.service.LoanStatusMapper;
@@ -80,6 +84,8 @@ public class GroupingTypesWritePlatformServiceJpaRepositoryImpl implements Group
     private final LoanRepository loanRepository;
     private final CodeValueRepositoryWrapper codeValueRepository;
     private final SavingsAccountRepository savingsRepository;
+    private final CalendarInstanceRepository calendarInstanceRepository;
+    private final CalendarDateRepository calendarDateRepository;
     private final CommandProcessingService commandProcessingService;
 
     @Autowired
@@ -87,6 +93,7 @@ public class GroupingTypesWritePlatformServiceJpaRepositoryImpl implements Group
             final GroupRepositoryWrapper groupRepository, final ClientRepositoryWrapper clientRepositoryWrapper,
             final OfficeRepository officeRepository, final StaffRepositoryWrapper staffRepository, final NoteRepository noteRepository,
             final GroupLevelRepository groupLevelRepository, final GroupingTypesDataValidator fromApiJsonDeserializer,
+            final CalendarInstanceRepository calendarInstanceRepository, final CalendarDateRepository calendarDateRepository,
             final LoanRepository loanRepository, final SavingsAccountRepository savingsRepository,
             final CodeValueRepositoryWrapper codeValueRepository, final CommandProcessingService commandProcessingService) {
         this.context = context;
@@ -100,6 +107,8 @@ public class GroupingTypesWritePlatformServiceJpaRepositoryImpl implements Group
         this.loanRepository = loanRepository;
         this.savingsRepository = savingsRepository;
         this.codeValueRepository = codeValueRepository;
+        this.calendarInstanceRepository = calendarInstanceRepository;
+        this.calendarDateRepository = calendarDateRepository;
         this.commandProcessingService = commandProcessingService;
     }
 
@@ -537,7 +546,9 @@ public class GroupingTypesWritePlatformServiceJpaRepositoryImpl implements Group
         validateLoansAndSavingsForGroupOrCenterClose(center, closureDate);
 
         center.close(currentUser, closureReason, closureDate);
-
+        
+        deleteCalendarDatesOnCenterCloseOrDelete(command);
+        
         this.groupRepository.saveAndFlush(center);
 
         return new CommandProcessingResultBuilder() //
@@ -718,6 +729,14 @@ public class GroupingTypesWritePlatformServiceJpaRepositoryImpl implements Group
             throw new InvalidGroupStateTransitionException(levelName.toLowerCase(), "activate.date",
                     "cannot.be.before.office.activation.date", errorMessage, activationDate, groupOffice.getOpeningLocalDate());
         }
+    }
+    
+    private void deleteCalendarDatesOnCenterCloseOrDelete(final JsonCommand command) {
+    	CalendarEntityType entityType = CalendarEntityType.CENTERS;
+    	Long entityId = command.entityId();
+    	final Collection<CalendarInstance> calendarInstances = this.calendarInstanceRepository.findByEntityIdAndEntityTypeId(entityId, entityType.getValue());
+    	for(CalendarInstance calendarInstance : calendarInstances)
+    		this.calendarDateRepository.deleteCalendarDateByCalendarInstanceId(calendarInstance.getId());
     }
 
 }

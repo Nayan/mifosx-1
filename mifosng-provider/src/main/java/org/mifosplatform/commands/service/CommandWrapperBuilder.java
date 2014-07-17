@@ -1215,10 +1215,13 @@ public class CommandWrapperBuilder {
         return this;
     }
 
-    public CommandWrapperBuilder updateCalendar(final String supportedEntityType, final Long supportedEntityId, final Long calendarId) {
+    public CommandWrapperBuilder updateCalendar(final CommandWrapper resourceDetails, final String supportedEntityType, final Long supportedEntityId, final Long calendarId) {
         this.actionName = "UPDATE";
         this.entityName = "CALENDAR";
         this.entityId = calendarId;
+        this.clientId = resourceDetails.getClientId();
+        this.loanId = resourceDetails.getLoanId();
+        this.groupId = resourceDetails.getGroupId();
         this.href = "/" + supportedEntityType + "/" + supportedEntityId + "/calendars/" + calendarId;
         return this;
     }

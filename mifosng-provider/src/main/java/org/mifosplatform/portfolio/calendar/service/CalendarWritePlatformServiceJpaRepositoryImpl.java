@@ -201,7 +201,7 @@ public class CalendarWritePlatformServiceJpaRepositoryImpl implements CalendarWr
             
             this.calendarRepository.saveAndFlush(calendarForUpdate);
             
-            deleteMeetingDatesOnCenterCalendarUpdate(command);
+            deleteCalendarDatesOnCenterCalendarUpdate(command);
             
             if (this.configurationDomainService.isRescheduleFutureRepaymentsEnabled() && calendarForUpdate.isRepeating()) {
                 // fetch all loan calendar instances associated with modifying
@@ -327,22 +327,29 @@ public class CalendarWritePlatformServiceJpaRepositoryImpl implements CalendarWr
     	
     	List<FutureCalendarData> futureCalendarsList = futureCalendars.getPageItems();
     	
+    	int flushCounter = 0;
     	for(FutureCalendarData futureCalendar : futureCalendarsList) {
     		
+    		flushCounter++;
     		int numberOfFutureCalendars = futureCalendar.getNumberOfFutureCalendars();
+    		
     		if(numberOfFutureCalendars < 10) {
     			final Set<LocalDate> remainingRecurringDates = new HashSet<>(this.calendarReadPlatformService
     					.generateRemainingRecurringDates(futureCalendar, maxAllowedPersistedCalendarDates));
+    			
     			CalendarDate calendarDate = null;
     			for(LocalDate futureDate : remainingRecurringDates) {
     				calendarDate = new CalendarDate(futureDate, futureCalendar.getCalendarInstanceId());
     				this.calendarDateRepository.save(calendarDate);
     			}
     		}
+    		
+    		if(flushCounter % 100 == 0) 
+				this.calendarDateRepository.flush();
     	}
     }
     
-    private void deleteMeetingDatesOnCenterCalendarUpdate(final JsonCommand command) {
+    private void deleteCalendarDatesOnCenterCalendarUpdate(final JsonCommand command) {
     	
     	Long entityId = null;
     	CalendarEntityType entityType = CalendarEntityType.INVALID;
@@ -360,7 +367,5 @@ public class CalendarWritePlatformServiceJpaRepositoryImpl implements CalendarWr
                     command.entityId(), entityId, entityType.getValue());
             this.calendarDateRepository.deleteCalendarDateByCalendarInstanceId(calendarInstance.getId());
         }
-    	
-        
     }
 }
