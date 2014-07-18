@@ -5,11 +5,15 @@
  */
 package org.mifosplatform.portfolio.calendar.service;
 
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.joda.time.LocalDate;
 import org.joda.time.format.DateTimeFormat;
@@ -20,10 +24,19 @@ import org.mifosplatform.infrastructure.core.data.ApiParameterError;
 import org.mifosplatform.infrastructure.core.data.CommandProcessingResult;
 import org.mifosplatform.infrastructure.core.data.CommandProcessingResultBuilder;
 import org.mifosplatform.infrastructure.core.data.DataValidatorBuilder;
+import org.mifosplatform.infrastructure.core.domain.JdbcSupport;
 import org.mifosplatform.infrastructure.core.exception.PlatformApiDataValidationException;
 import org.mifosplatform.infrastructure.core.service.DateUtils;
+import org.mifosplatform.infrastructure.core.service.Page;
+import org.mifosplatform.infrastructure.core.service.PaginationHelper;
+import org.mifosplatform.infrastructure.core.service.RoutingDataSource;
+import org.mifosplatform.infrastructure.jobs.annotation.CronTarget;
+import org.mifosplatform.infrastructure.jobs.service.JobName;
 import org.mifosplatform.portfolio.calendar.CalendarConstants.CALENDAR_SUPPORTED_PARAMETERS;
+import org.mifosplatform.portfolio.calendar.data.FutureCalendarData;
 import org.mifosplatform.portfolio.calendar.domain.Calendar;
+import org.mifosplatform.portfolio.calendar.domain.CalendarDate;
+import org.mifosplatform.portfolio.calendar.domain.CalendarDateRepository;
 import org.mifosplatform.portfolio.calendar.domain.CalendarEntityType;
 import org.mifosplatform.portfolio.calendar.domain.CalendarHistory;
 import org.mifosplatform.portfolio.calendar.domain.CalendarHistoryRepository;
@@ -41,7 +54,10 @@ import org.mifosplatform.portfolio.loanaccount.domain.Loan;
 import org.mifosplatform.portfolio.loanaccount.domain.LoanRepository;
 import org.mifosplatform.portfolio.loanaccount.service.LoanWritePlatformService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 
 @Service
@@ -49,23 +65,31 @@ public class CalendarWritePlatformServiceJpaRepositoryImpl implements CalendarWr
 
     private final CalendarRepository calendarRepository;
     private final CalendarHistoryRepository calendarHistoryRepository;
+    private final CalendarDateRepository calendarDateRepository;
     private final CalendarCommandFromApiJsonDeserializer fromApiJsonDeserializer;
     private final CalendarInstanceRepository calendarInstanceRepository;
+    private final CalendarReadPlatformService calendarReadPlatformService;
     private final LoanWritePlatformService loanWritePlatformService;
     private final ConfigurationDomainService configurationDomainService;
     private final GroupRepositoryWrapper groupRepository;
     private final LoanRepository loanRepository;
     private final ClientRepositoryWrapper clientRepository;
+    private final JdbcTemplate jdbcTemplate;
+    private final PaginationHelper<FutureCalendarData> paginationHelper = new PaginationHelper<>();
 
     @Autowired
     public CalendarWritePlatformServiceJpaRepositoryImpl(final CalendarRepository calendarRepository,
             final CalendarHistoryRepository calendarHistoryRepository,
+            final CalendarDateRepository calendarDateRepository,
             final CalendarCommandFromApiJsonDeserializer fromApiJsonDeserializer,
-            final CalendarInstanceRepository calendarInstanceRepository, final LoanWritePlatformService loanWritePlatformService,
-            final ConfigurationDomainService configurationDomainService, final GroupRepositoryWrapper groupRepository,
-            final LoanRepository loanRepository, final ClientRepositoryWrapper clientRepository) {
+            final CalendarInstanceRepository calendarInstanceRepository, final CalendarReadPlatformService calendarReadPlatformService,
+            final LoanWritePlatformService loanWritePlatformService, final ConfigurationDomainService configurationDomainService,
+            final GroupRepositoryWrapper groupRepository, final LoanRepository loanRepository,
+            final ClientRepositoryWrapper clientRepository, final RoutingDataSource dataSource) {
         this.calendarRepository = calendarRepository;
         this.calendarHistoryRepository = calendarHistoryRepository;
+        this.calendarDateRepository = calendarDateRepository;
+        this.calendarReadPlatformService = calendarReadPlatformService;
         this.fromApiJsonDeserializer = fromApiJsonDeserializer;
         this.calendarInstanceRepository = calendarInstanceRepository;
         this.loanWritePlatformService = loanWritePlatformService;
@@ -73,6 +97,7 @@ public class CalendarWritePlatformServiceJpaRepositoryImpl implements CalendarWr
         this.groupRepository = groupRepository;
         this.loanRepository = loanRepository;
         this.clientRepository = clientRepository;
+        this.jdbcTemplate = new JdbcTemplate(dataSource);
     }
 
     @Override
@@ -173,9 +198,11 @@ public class CalendarWritePlatformServiceJpaRepositoryImpl implements CalendarWr
                 calendarHistory.updateEndDate(endDate);
                 this.calendarHistoryRepository.save(calendarHistory);
             }
-
+            
             this.calendarRepository.saveAndFlush(calendarForUpdate);
-
+            
+            deleteCalendarDatesOnCenterCalendarUpdate(command);
+            
             if (this.configurationDomainService.isRescheduleFutureRepaymentsEnabled() && calendarForUpdate.isRepeating()) {
                 // fetch all loan calendar instances associated with modifying
                 // calendar.
@@ -235,5 +262,110 @@ public class CalendarWritePlatformServiceJpaRepositoryImpl implements CalendarWr
                 .withCommandId(null) //
                 .withEntityId(calendarForUpdate.getId()) //
                 .build();
+    }
+    
+    private static final class FutureCenterCalendarMapper implements RowMapper<FutureCalendarData> {
+
+        public String schema() {
+            return "c.recurrence as recurrence, c.start_date as start_date, ci.id as calendar_instance_id, " 
+            + " count(ccd.id) As number_of_future_meetings, max(ccd.meeting_date) As last_future_meeting_date "
+            + "from m_calendar_instance ci inner join m_calendar c on c.id = ci.calendar_id and ci.entity_type_enum = 4 "
+            + "left join ct_calendar_dates ccd on ccd.calendar_instance_id = ci.id "
+            + " and ccd.meeting_date >= curdate()";
+        }
+
+        @Override
+        public FutureCalendarData mapRow(final ResultSet rs, @SuppressWarnings("unused") final int rowNum) throws SQLException {
+
+            final Long calendarInstanceId = rs.getLong("calendar_instance_id");
+            final int numberOfFutureMeetings = rs.getInt("number_of_future_meetings");
+            final LocalDate fromDate = JdbcSupport.getLocalDate(rs, "last_future_meeting_date");
+            final String recurrence = rs.getString("recurrence");
+            final LocalDate startDate = JdbcSupport.getLocalDate(rs, "start_date");
+
+            return new FutureCalendarData(numberOfFutureMeetings, fromDate, calendarInstanceId, startDate, recurrence);
+        }
+    }
+    
+    @Override
+    @CronTarget(jobName = JobName.UPDATE_CALENDAR_DATES)
+    public void updateCalendarDates() {
+    	
+    	final FutureCenterCalendarMapper rm = new FutureCenterCalendarMapper();
+    	final StringBuilder sqlBuilder = new StringBuilder(200);
+    	final int maxPageSize = 500;
+    	
+        sqlBuilder.append("select SQL_CALC_FOUND_ROWS ");
+        sqlBuilder.append(rm.schema());
+        sqlBuilder.append(" group by ci.id");
+        sqlBuilder.append(" limit " + maxPageSize);
+    	final String sqlCountRows = "SELECT FOUND_ROWS()";
+    	
+        Page<FutureCalendarData> futureCalendars = this.paginationHelper.fetchPage(this.jdbcTemplate,
+        		sqlCountRows, sqlBuilder.toString(), new Object[] {}, rm);
+        
+        insertCalendarDates(futureCalendars);
+        
+        int totalFilteredRecords = futureCalendars.getTotalFilteredRecords();
+        int offsetCounter = maxPageSize;
+        int processedRecords = maxPageSize;
+        
+        sqlBuilder.append(" offset " + offsetCounter);
+        while(totalFilteredRecords > processedRecords) {
+        	futureCalendars = this.paginationHelper.fetchPage(this.jdbcTemplate,
+            		sqlCountRows, sqlBuilder.toString().replaceFirst("offset.*$", "offset " + offsetCounter), new Object[] {}, rm);
+        	insertCalendarDates(futureCalendars);
+        	offsetCounter += 500;
+        	processedRecords += 500;
+        }
+    }
+    
+    @Transactional
+    private void insertCalendarDates(Page<FutureCalendarData> futureCalendars) {
+    	
+    	final int maxAllowedPersistedCalendarDates = 10;
+    	
+    	List<FutureCalendarData> futureCalendarsList = futureCalendars.getPageItems();
+    	
+    	int flushCounter = 0;
+    	for(FutureCalendarData futureCalendar : futureCalendarsList) {
+    		
+    		flushCounter++;
+    		int numberOfFutureCalendars = futureCalendar.getNumberOfFutureCalendars();
+    		
+    		if(numberOfFutureCalendars < 10) {
+    			final Set<LocalDate> remainingRecurringDates = new HashSet<>(this.calendarReadPlatformService
+    					.generateRemainingRecurringDates(futureCalendar, maxAllowedPersistedCalendarDates));
+    			
+    			CalendarDate calendarDate = null;
+    			for(LocalDate futureDate : remainingRecurringDates) {
+    				calendarDate = new CalendarDate(futureDate, futureCalendar.getCalendarInstanceId());
+    				this.calendarDateRepository.save(calendarDate);
+    			}
+    		}
+    		
+    		if(flushCounter % 100 == 0) 
+				this.calendarDateRepository.flush();
+    	}
+    }
+    
+    private void deleteCalendarDatesOnCenterCalendarUpdate(final JsonCommand command) {
+    	
+    	Long entityId = null;
+    	CalendarEntityType entityType = CalendarEntityType.INVALID;
+    	
+    	if (command.getGroupId() != null) {
+    		entityId = command.getGroupId();
+            final Group group = this.groupRepository.findOneWithNotFoundDetection(entityId);
+            if (group.isCenter()) {
+                entityType = CalendarEntityType.CENTERS;
+            } else if (group.isChildGroup()) {
+                entityType = CalendarEntityType.CENTERS;
+                entityId = group.getParent().getId();
+            }
+            final CalendarInstance calendarInstance = this.calendarInstanceRepository.findByCalendarIdAndEntityIdAndEntityTypeId(
+                    command.entityId(), entityId, entityType.getValue());
+            this.calendarDateRepository.deleteCalendarDateByCalendarInstanceId(calendarInstance.getId());
+        }
     }
 }

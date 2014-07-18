@@ -10,6 +10,7 @@ import java.util.List;
 
 import org.joda.time.LocalDate;
 import org.mifosplatform.portfolio.calendar.data.CalendarData;
+import org.mifosplatform.portfolio.calendar.data.FutureCalendarData;
 import org.mifosplatform.portfolio.meeting.data.MeetingData;
 
 public interface CalendarReadPlatformService {
@@ -27,6 +28,9 @@ public interface CalendarReadPlatformService {
 
     Collection<LocalDate> generateRecurringDates(final CalendarData calendarData, final boolean withHistory, final LocalDate tillDate);
 
+    Collection<LocalDate> generateRemainingRecurringDates(final FutureCalendarData futureCalendarData,
+    		final int maxAllowedPersistedMeetingDates);
+    
     Collection<LocalDate> generateNextTenRecurringDates(final CalendarData calendarData);
 
     Collection<CalendarData> updateWithRecurringDates(final Collection<CalendarData> calendarsData);

@@ -182,14 +182,19 @@ public class CalendarsApiResource {
 
     }
 
-    @PUT
+@PUT
     @Path("{calendarId}")
     @Consumes({ MediaType.APPLICATION_JSON })
     @Produces({ MediaType.APPLICATION_JSON })
     public String updateCalendar(@PathParam("entityType") final String entityType, @PathParam("entityId") final Long entityId,
             @PathParam("calendarId") final Long calendarId, final String jsonRequestBody) {
+    	
+    	final CalendarEntityType calendarEntityType = CalendarEntityType.getEntityType(entityType);
+        if (calendarEntityType == null) { throw new CalendarEntityTypeNotSupportedException(entityType); }
 
-        final CommandWrapper commandRequest = new CommandWrapperBuilder().updateCalendar(entityType, entityId, calendarId)
+        final CommandWrapper resourceDetails = getResourceDetails(calendarEntityType, entityId);
+
+        final CommandWrapper commandRequest = new CommandWrapperBuilder().updateCalendar(resourceDetails, entityType, entityId, calendarId)
                 .withJson(jsonRequestBody).build();
 
         final CommandProcessingResult result = this.commandsSourceWritePlatformService.logCommandSource(commandRequest);
