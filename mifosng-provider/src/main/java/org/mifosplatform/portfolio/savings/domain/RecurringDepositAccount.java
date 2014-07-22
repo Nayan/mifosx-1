@@ -39,10 +39,14 @@ import org.mifosplatform.infrastructure.core.data.DataValidatorBuilder;
 import org.mifosplatform.infrastructure.core.domain.LocalDateInterval;
 import org.mifosplatform.infrastructure.core.exception.PlatformApiDataValidationException;
 import org.mifosplatform.infrastructure.core.service.DateUtils;
+import org.mifosplatform.organisation.holiday.domain.Holiday;
+import org.mifosplatform.organisation.holiday.service.HolidayUtil;
 import org.mifosplatform.organisation.monetary.domain.Money;
 import org.mifosplatform.organisation.staff.domain.Staff;
+import org.mifosplatform.organisation.workingdays.domain.WorkingDays;
 import org.mifosplatform.portfolio.accountdetails.domain.AccountType;
 import org.mifosplatform.portfolio.calendar.domain.Calendar;
+import org.mifosplatform.portfolio.calendar.domain.CalendarFrequencyType;
 import org.mifosplatform.portfolio.calendar.service.CalendarUtils;
 import org.mifosplatform.portfolio.client.domain.Client;
 import org.mifosplatform.portfolio.common.domain.PeriodFrequencyType;
@@ -1045,12 +1049,18 @@ public class RecurringDepositAccount extends SavingsAccount {
         return this.accountTermAndPreClosure.isTransferInterestToLinkedAccount();
     }
 
-    public void generateSchedule(final PeriodFrequencyType frequency, final Integer recurringEvery, final Calendar calendar) {
+    public void generateSchedule(final Calendar calendar, final boolean isHolidayEnabled,
+    		final List<Holiday> holidays, final WorkingDays workingDays) {
+    	
+    	final PeriodFrequencyType frequency = CalendarFrequencyType.from(CalendarUtils.getFrequency(calendar.getRecurrence()));
+        Integer recurringEvery = CalendarUtils.getInterval(calendar.getRecurrence());
+        recurringEvery = recurringEvery == -1 ? 1 : recurringEvery;
+        
         final List<RecurringDepositScheduleInstallment> depositScheduleInstallments = depositScheduleInstallments();
         depositScheduleInstallments.clear();
         LocalDate installmentDate = null;
         if (this.isCalendarInherited()) {
-            installmentDate = CalendarUtils.getNextScheduleDate(calendar, accountSubmittedOrActivationDate());
+            installmentDate = CalendarUtils.getNextScheduleDate(calendar, accountSubmittedOrActivationDate(), workingDays);
         } else {
             installmentDate = depositStartDate();
         }
@@ -1059,11 +1069,39 @@ public class RecurringDepositAccount extends SavingsAccount {
         int installmentNumber = 1;
         final BigDecimal depositAmount = this.recurringDetail.mandatoryRecommendedDepositAmount();
         while (maturityDate.isAfter(installmentDate)) {
-            final RecurringDepositScheduleInstallment installment = RecurringDepositScheduleInstallment.installment(this,
+        	RecurringDepositScheduleInstallment installment = null;
+        	if (isHolidayEnabled) {
+        		LocalDate holidayModifiedInstallmentDate = HolidayUtil.getRepaymentRescheduleDateToIfHoliday(installmentDate, holidays);
+        		installment = RecurringDepositScheduleInstallment.installment(this,
+                        installmentNumber, holidayModifiedInstallmentDate.toDate(), depositAmount);
+            } else {
+            installment = RecurringDepositScheduleInstallment.installment(this,
                     installmentNumber, installmentDate.toDate(), depositAmount);
+            }
             depositScheduleInstallments.add(installment);
             installmentDate = calculateNextDepositDate(installmentDate, frequency, recurringEvery);
             installmentNumber += 1;
+        }
+    }
+    
+    public void updateScheduleDates(final Calendar calendar, final boolean isHolidayEnabled,
+    		final List<Holiday> holidays, final WorkingDays workingDays) {
+    	
+        Integer recurringEvery = CalendarUtils.getInterval(calendar.getRecurrence());
+        recurringEvery = recurringEvery == -1 ? 1 : recurringEvery;
+        
+        LocalDate newScheduleDate = null;
+        for (final RecurringDepositScheduleInstallment recurringDepositScheduleInstallment : this.depositScheduleInstallments) {
+        	final LocalDate oldDueDate = recurringDepositScheduleInstallment.dueDate();
+        	if (oldDueDate.isAfter(calendar.getStartDateLocalDate())
+        			&& oldDueDate.isAfter(DateUtils.getLocalDateOfTenant())) {
+        		
+        		newScheduleDate = CalendarUtils.getNewInstallmentScheduleDate(calendar, oldDueDate, workingDays);
+        		if (isHolidayEnabled) {
+        			newScheduleDate = HolidayUtil.getRepaymentRescheduleDateToIfHoliday(newScheduleDate, holidays);
+                }
+        		recurringDepositScheduleInstallment.updateDueDate(newScheduleDate);
+        	} 
         }
     }
 

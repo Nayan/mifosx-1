@@ -64,22 +64,17 @@ import org.mifosplatform.infrastructure.core.domain.LocalDateInterval;
 import org.mifosplatform.infrastructure.core.exception.PlatformApiDataValidationException;
 import org.mifosplatform.infrastructure.core.service.DateUtils;
 import org.mifosplatform.infrastructure.security.service.RandomPasswordGenerator;
-import org.mifosplatform.organisation.holiday.domain.Holiday;
-import org.mifosplatform.organisation.holiday.service.HolidayUtil;
 import org.mifosplatform.organisation.monetary.data.CurrencyData;
 import org.mifosplatform.organisation.monetary.domain.MonetaryCurrency;
 import org.mifosplatform.organisation.monetary.domain.Money;
 import org.mifosplatform.organisation.office.domain.Office;
 import org.mifosplatform.organisation.staff.domain.Staff;
-import org.mifosplatform.organisation.workingdays.domain.WorkingDays;
 import org.mifosplatform.portfolio.accountdetails.domain.AccountType;
-import org.mifosplatform.portfolio.calendar.service.CalendarUtils;
 import org.mifosplatform.portfolio.charge.domain.Charge;
 import org.mifosplatform.portfolio.charge.exception.SavingsAccountChargeNotFoundException;
 import org.mifosplatform.portfolio.client.domain.Client;
 import org.mifosplatform.portfolio.common.domain.PeriodFrequencyType;
 import org.mifosplatform.portfolio.group.domain.Group;
-import org.mifosplatform.portfolio.loanaccount.domain.LoanRepaymentScheduleInstallment;
 import org.mifosplatform.portfolio.savings.DepositAccountType;
 import org.mifosplatform.portfolio.savings.SavingsApiConstants;
 import org.mifosplatform.portfolio.savings.SavingsCompoundingInterestPeriodType;
@@ -1155,41 +1150,6 @@ public class SavingsAccount extends AbstractPersistable<Long> {
     public void updateAccountNo(final String newAccountNo) {
         this.accountNumber = newAccountNo;
         this.accountNumberRequiresAutoGeneration = false;
-    }
-    
-    public void updateRDScheduleDates(final LocalDate meetingStartDate, final String recuringRule,
-            final boolean isHolidayEnabled, final List<Holiday> holidays, final WorkingDays workingDays) {
-    	LocalDate tmpFromDate = getSubmittedOnLocalDate();
-
-        LocalDate newDepositDate = null;
-//        for (final LoanRepaymentScheduleInstallment loanRepaymentScheduleInstallment : this.repaymentScheduleInstallments) {
-//            final LocalDate oldDueDate = loanRepaymentScheduleInstallment.getDueDate();
-//            // FIXME: AA this won't update repayment dates before current date.
-//            if (oldDueDate.isAfter(meetingStartDate) && oldDueDate.isAfter(DateUtils.getLocalDateOfTenant())) {
-//            	newDepositDate = CalendarUtils.getNewRepaymentMeetingDate(recuringRule, meetingStartDate, oldDueDate,
-//                        loanRepaymentInterval, frequency, workingDays);
-//
-//                final LocalDate maxDateLimitForNewRepayment = getMaxDateLimitForNewRepayment(repaymentPeriodFrequencyType,
-//                        loanRepaymentInterval, tmpFromDate);
-//
-//                if (newDepositDate.isAfter(maxDateLimitForNewRepayment)) {
-//                	newDepositDate = CalendarUtils.getNextRepaymentMeetingDate(recuringRule, meetingStartDate, tmpFromDate,
-//                            loanRepaymentInterval, frequency, workingDays);
-//                }
-//
-//                if (isHolidayEnabled) {
-//                	newDepositDate = HolidayUtil.getRepaymentRescheduleDateToIfHoliday(newDepositDate, holidays);
-//                }
-//
-//                loanRepaymentScheduleInstallment.updateDueDate(newDepositDate);
-//                // reset from date to get actual daysInPeriod
-//                loanRepaymentScheduleInstallment.updateFromDate(tmpFromDate);
-//                tmpFromDate = newDepositDate;// update with new repayment
-//                // date
-//            } else {
-//                tmpFromDate = oldDueDate;
-//            }
-//        }
     }
 
     public boolean isAccountNumberRequiresAutoGeneration() {

@@ -5,7 +5,6 @@
  */
 package org.mifosplatform.portfolio.savings.domain;
 
-import java.util.Collection;
 import java.util.List;
 
 import org.springframework.data.domain.Page;
@@ -35,7 +34,4 @@ public interface SavingsAccountRepository extends JpaRepository<SavingsAccount, 
     @Query("from SavingsAccount sa where sa.id = :accountId and sa.depositType = :depositAccountTypeId")
     SavingsAccount findByIdAndDepositAccountType(@Param("accountId") Long accountId, @Param("depositAccountTypeId") Integer depositAccountTypeId);
 
-    @Query("from SavingsAccount sa where sa.id IN :ids and sa.loanStatus IN :savingStatuses and sa.loanType IN :depositType")
-    List<SavingsAccount> findByIdsAndStatusAndDepositType(@Param("ids") Collection<Long> ids,
-            @Param("savingStatuses") Collection<Integer> savingStatuses, @Param("depositType") Integer depositType);
 }
