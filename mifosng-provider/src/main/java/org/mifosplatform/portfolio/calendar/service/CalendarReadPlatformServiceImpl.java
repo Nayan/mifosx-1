@@ -16,6 +16,8 @@ import org.mifosplatform.infrastructure.core.data.EnumOptionData;
 import org.mifosplatform.infrastructure.core.domain.JdbcSupport;
 import org.mifosplatform.infrastructure.core.service.DateUtils;
 import org.mifosplatform.infrastructure.core.service.RoutingDataSource;
+import org.mifosplatform.organisation.holiday.domain.Holiday;
+import org.mifosplatform.organisation.holiday.service.HolidayUtil;
 import org.mifosplatform.portfolio.calendar.data.CalendarData;
 import org.mifosplatform.portfolio.calendar.data.FutureCalendarData;
 import org.mifosplatform.portfolio.calendar.domain.CalendarEntityType;
@@ -28,6 +30,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
+
+import edu.emory.mathcs.backport.java.util.Collections;
 
 @Service
 public class CalendarReadPlatformServiceImpl implements CalendarReadPlatformService {
@@ -233,8 +237,8 @@ public class CalendarReadPlatformServiceImpl implements CalendarReadPlatformServ
     
     @Override
     public Collection<LocalDate> generateRemainingRecurringDates(final FutureCalendarData futureCalendarData,
-    		final int maxAllowedPersistedMeetingDates) {
-    	
+    		final int maxAllowedPersistedMeetingDates, final boolean isHolidayEnabled, final List<Holiday> holidays) {
+		
     	final int maxCount = maxAllowedPersistedMeetingDates - futureCalendarData.getNumberOfFutureCalendars();
     	
     	final String rrule = futureCalendarData.getRecurrence();
@@ -252,8 +256,16 @@ public class CalendarReadPlatformServiceImpl implements CalendarReadPlatformServ
         
     	final LocalDate periodEndDate = this.getPeriodEndDate(null, null);
     	
-    	final Collection<LocalDate> recurringDates = CalendarUtils.getRecurringDates(rrule, seedDate, periodStartDate, periodEndDate,
-                maxCount);
+    	final List<LocalDate> recurringDates = new ArrayList<LocalDate>(CalendarUtils.getRecurringDates(rrule, seedDate, periodStartDate, periodEndDate,
+                maxCount));
+    	
+    	for (final LocalDate oldDate : recurringDates) {
+    		    LocalDate newScheduleDate = null;
+        		if (isHolidayEnabled) {
+        			newScheduleDate = HolidayUtil.getRepaymentRescheduleDateToIfHoliday(oldDate, holidays);
+        			Collections.replaceAll(recurringDates, oldDate, newScheduleDate);
+                }
+        }
     	
         return recurringDates;
     }

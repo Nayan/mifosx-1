@@ -280,7 +280,7 @@ public class DepositApplicationProcessWritePlatformServiceJpaRepositoryImpl impl
     @Transactional
     @Override
     public void applyRecurringDepositScheduleChanges(final Calendar calendar, final Collection<CalendarInstance> savingsCalendarInstances) {
-		 final boolean isHolidayEnabled = this.configurationDomainService.isRescheduleRepaymentsOnHolidaysEnabled();
+		 final boolean isHolidayEnabled = this.configurationDomainService.isRescheduleInstallmentsOnHolidaysEnabled();
 		 final WorkingDays workingDays = this.workingDaysRepository.findOne();
 		 final Collection<Integer> savingsStatuses = new ArrayList<>(Arrays.asList(SavingsAccountStatusType.SUBMITTED_AND_PENDING_APPROVAL.getValue(),
 				 SavingsAccountStatusType.APPROVED.getValue(), SavingsAccountStatusType.ACTIVE.getValue()));

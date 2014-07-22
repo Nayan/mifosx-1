@@ -1070,6 +1070,7 @@ public class RecurringDepositAccount extends SavingsAccount {
         final BigDecimal depositAmount = this.recurringDetail.mandatoryRecommendedDepositAmount();
         while (maturityDate.isAfter(installmentDate)) {
         	RecurringDepositScheduleInstallment installment = null;
+        	installmentDate = CalendarUtils.getNewInstallmentScheduleDate(calendar, installmentDate, workingDays);
         	if (isHolidayEnabled) {
         		LocalDate holidayModifiedInstallmentDate = HolidayUtil.getRepaymentRescheduleDateToIfHoliday(installmentDate, holidays);
         		installment = RecurringDepositScheduleInstallment.installment(this,

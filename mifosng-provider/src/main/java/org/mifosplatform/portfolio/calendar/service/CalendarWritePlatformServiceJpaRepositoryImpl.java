@@ -32,6 +32,8 @@ import org.mifosplatform.infrastructure.core.service.PaginationHelper;
 import org.mifosplatform.infrastructure.core.service.RoutingDataSource;
 import org.mifosplatform.infrastructure.jobs.annotation.CronTarget;
 import org.mifosplatform.infrastructure.jobs.service.JobName;
+import org.mifosplatform.organisation.holiday.domain.Holiday;
+import org.mifosplatform.organisation.holiday.domain.HolidayRepositoryWrapper;
 import org.mifosplatform.portfolio.calendar.CalendarConstants.CALENDAR_SUPPORTED_PARAMETERS;
 import org.mifosplatform.portfolio.calendar.data.FutureCalendarData;
 import org.mifosplatform.portfolio.calendar.domain.Calendar;
@@ -73,6 +75,7 @@ public class CalendarWritePlatformServiceJpaRepositoryImpl implements CalendarWr
     private final LoanWritePlatformService loanWritePlatformService;
     private final DepositApplicationProcessWritePlatformService depositApplicationProcessWritePlatformService;
     private final ConfigurationDomainService configurationDomainService;
+    private final HolidayRepositoryWrapper holidayRepository;
     private final GroupRepositoryWrapper groupRepository;
     private final LoanRepository loanRepository;
     private final ClientRepositoryWrapper clientRepository;
@@ -87,6 +90,7 @@ public class CalendarWritePlatformServiceJpaRepositoryImpl implements CalendarWr
             final CalendarInstanceRepository calendarInstanceRepository, final CalendarReadPlatformService calendarReadPlatformService,
             final LoanWritePlatformService loanWritePlatformService,
             final DepositApplicationProcessWritePlatformService depositApplicationProcessWritePlatformService,
+            final HolidayRepositoryWrapper holidayRepository,
             final ConfigurationDomainService configurationDomainService,
             final GroupRepositoryWrapper groupRepository, final LoanRepository loanRepository,
             final ClientRepositoryWrapper clientRepository, final RoutingDataSource dataSource) {
@@ -98,6 +102,7 @@ public class CalendarWritePlatformServiceJpaRepositoryImpl implements CalendarWr
         this.calendarInstanceRepository = calendarInstanceRepository;
         this.loanWritePlatformService = loanWritePlatformService;
         this.depositApplicationProcessWritePlatformService = depositApplicationProcessWritePlatformService;
+        this.holidayRepository = holidayRepository;
         this.configurationDomainService = configurationDomainService;
         this.groupRepository = groupRepository;
         this.loanRepository = loanRepository;
@@ -220,7 +225,7 @@ public class CalendarWritePlatformServiceJpaRepositoryImpl implements CalendarWr
                 }
             }
             
-            if (this.configurationDomainService.isRescheduleFutureRepaymentsEnabled() && calendarForUpdate.isRepeating()) {
+            if (this.configurationDomainService.isRescheduleFutureInstallmentsEnabled() && calendarForUpdate.isRepeating()) {
                 // fetch all savings calendar instances associated with modifying calendar
                 final Collection<CalendarInstance> savingsCalendarInstances = this.calendarInstanceRepository.findByCalendarIdAndEntityTypeId(
                         calendarId, CalendarEntityType.SAVINGS.getValue());
@@ -283,23 +288,24 @@ public class CalendarWritePlatformServiceJpaRepositoryImpl implements CalendarWr
     private static final class FutureCenterCalendarMapper implements RowMapper<FutureCalendarData> {
 
         public String schema() {
-            return "c.recurrence as recurrence, c.start_date as start_date, ci.id as calendar_instance_id, " 
-            + " count(ccd.id) As number_of_future_meetings, max(ccd.meeting_date) As last_future_meeting_date "
-            + "from m_calendar_instance ci inner join m_group g on g.id=ci.entity_id and ci.entity_type_enum = 4 "
-            + "inner join m_calendar c on c.id = ci.calendar_id left join ct_calendar_dates ccd "
-            + " on ccd.calendar_instance_id = ci.id and ccd.meeting_date >= curdate()";
+            return "g.office_id as office_id, c.recurrence as recurrence, c.start_date as start_date, "
+            + "ci.id as calendar_instance_id, count(ccd.id) As number_of_future_meetings, max(ccd.meeting_date) "
+            + "As last_future_meeting_date from m_calendar_instance ci inner join m_group g on g.id=ci.entity_id "
+            + "and ci.entity_type_enum = 4 inner join m_calendar c on c.id = ci.calendar_id left join ct_calendar_dates ccd "
+            + "on ccd.calendar_instance_id = ci.id and ccd.meeting_date >= curdate()";
         }
 
         @Override
         public FutureCalendarData mapRow(final ResultSet rs, @SuppressWarnings("unused") final int rowNum) throws SQLException {
 
+        	final Long officeId = rs.getLong("office_id");
             final Long calendarInstanceId = rs.getLong("calendar_instance_id");
             final int numberOfFutureMeetings = rs.getInt("number_of_future_meetings");
             final LocalDate fromDate = JdbcSupport.getLocalDate(rs, "last_future_meeting_date");
             final String recurrence = rs.getString("recurrence");
             final LocalDate startDate = JdbcSupport.getLocalDate(rs, "start_date");
 
-            return new FutureCalendarData(numberOfFutureMeetings, fromDate, calendarInstanceId, startDate, recurrence);
+            return new FutureCalendarData(officeId, numberOfFutureMeetings, fromDate, calendarInstanceId, startDate, recurrence);
         }
     }
     
@@ -311,6 +317,8 @@ public class CalendarWritePlatformServiceJpaRepositoryImpl implements CalendarWr
     	final StringBuilder sqlBuilder = new StringBuilder(200);
     	final int maxPageSize = 500;
     	
+    	final boolean isHolidayEnabled = this.configurationDomainService.isRescheduleInstallmentsOnHolidaysEnabled();
+    	
         sqlBuilder.append("select SQL_CALC_FOUND_ROWS ");
         sqlBuilder.append(rm.schema());
         sqlBuilder.append(" where g.status_enum=300");
@@ -321,7 +329,7 @@ public class CalendarWritePlatformServiceJpaRepositoryImpl implements CalendarWr
         Page<FutureCalendarData> futureCalendars = this.paginationHelper.fetchPage(this.jdbcTemplate,
         		sqlCountRows, sqlBuilder.toString(), new Object[] {}, rm);
         
-        insertCalendarDates(futureCalendars);
+        insertCalendarDates(futureCalendars, isHolidayEnabled);
         
         int totalFilteredRecords = futureCalendars.getTotalFilteredRecords();
         int offsetCounter = maxPageSize;
@@ -331,14 +339,14 @@ public class CalendarWritePlatformServiceJpaRepositoryImpl implements CalendarWr
         while(totalFilteredRecords > processedRecords) {
         	futureCalendars = this.paginationHelper.fetchPage(this.jdbcTemplate,
             		sqlCountRows, sqlBuilder.toString().replaceFirst("offset.*$", "offset " + offsetCounter), new Object[] {}, rm);
-        	insertCalendarDates(futureCalendars);
+        	insertCalendarDates(futureCalendars, isHolidayEnabled);
         	offsetCounter += 500;
         	processedRecords += 500;
         }
     }
     
     @Transactional
-    private void insertCalendarDates(Page<FutureCalendarData> futureCalendars) {
+    private void insertCalendarDates(Page<FutureCalendarData> futureCalendars, final boolean isHolidayEnabled) {
     	
     	final int maxAllowedPersistedCalendarDates = 10;
     	
@@ -347,12 +355,15 @@ public class CalendarWritePlatformServiceJpaRepositoryImpl implements CalendarWr
     	int flushCounter = 0;
     	for(FutureCalendarData futureCalendar : futureCalendarsList) {
     		
+    		List<Holiday> holidays = this.holidayRepository.findByOfficeIdAndGreaterThanDate(futureCalendar.getOfficeId(),
+    				futureCalendar.getStartDate().toDate());
     		flushCounter++;
     		int numberOfFutureCalendars = futureCalendar.getNumberOfFutureCalendars();
     		
     		if(numberOfFutureCalendars < 10) {
     			final Set<LocalDate> remainingRecurringDates = new HashSet<>(this.calendarReadPlatformService
-    					.generateRemainingRecurringDates(futureCalendar, maxAllowedPersistedCalendarDates));
+    					.generateRemainingRecurringDates(futureCalendar, maxAllowedPersistedCalendarDates,
+    							isHolidayEnabled, holidays));
     			
     			CalendarDate calendarDate = null;
     			for(LocalDate futureDate : remainingRecurringDates) {
