@@ -53,6 +53,7 @@ import org.mifosplatform.portfolio.group.domain.GroupRepositoryWrapper;
 import org.mifosplatform.portfolio.loanaccount.domain.Loan;
 import org.mifosplatform.portfolio.loanaccount.domain.LoanRepository;
 import org.mifosplatform.portfolio.loanaccount.service.LoanWritePlatformService;
+import org.mifosplatform.portfolio.savings.service.DepositApplicationProcessWritePlatformService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -70,6 +71,7 @@ public class CalendarWritePlatformServiceJpaRepositoryImpl implements CalendarWr
     private final CalendarInstanceRepository calendarInstanceRepository;
     private final CalendarReadPlatformService calendarReadPlatformService;
     private final LoanWritePlatformService loanWritePlatformService;
+    private final DepositApplicationProcessWritePlatformService depositApplicationProcessWritePlatformService;
     private final ConfigurationDomainService configurationDomainService;
     private final GroupRepositoryWrapper groupRepository;
     private final LoanRepository loanRepository;
@@ -83,7 +85,9 @@ public class CalendarWritePlatformServiceJpaRepositoryImpl implements CalendarWr
             final CalendarDateRepository calendarDateRepository,
             final CalendarCommandFromApiJsonDeserializer fromApiJsonDeserializer,
             final CalendarInstanceRepository calendarInstanceRepository, final CalendarReadPlatformService calendarReadPlatformService,
-            final LoanWritePlatformService loanWritePlatformService, final ConfigurationDomainService configurationDomainService,
+            final LoanWritePlatformService loanWritePlatformService,
+            final DepositApplicationProcessWritePlatformService depositApplicationProcessWritePlatformService,
+            final ConfigurationDomainService configurationDomainService,
             final GroupRepositoryWrapper groupRepository, final LoanRepository loanRepository,
             final ClientRepositoryWrapper clientRepository, final RoutingDataSource dataSource) {
         this.calendarRepository = calendarRepository;
@@ -93,6 +97,7 @@ public class CalendarWritePlatformServiceJpaRepositoryImpl implements CalendarWr
         this.fromApiJsonDeserializer = fromApiJsonDeserializer;
         this.calendarInstanceRepository = calendarInstanceRepository;
         this.loanWritePlatformService = loanWritePlatformService;
+        this.depositApplicationProcessWritePlatformService = depositApplicationProcessWritePlatformService;
         this.configurationDomainService = configurationDomainService;
         this.groupRepository = groupRepository;
         this.loanRepository = loanRepository;
@@ -212,6 +217,17 @@ public class CalendarWritePlatformServiceJpaRepositoryImpl implements CalendarWr
                 if (!CollectionUtils.isEmpty(loanCalendarInstances)) {
                     // update all loans associated with modifying calendar
                     this.loanWritePlatformService.applyMeetingDateChanges(calendarForUpdate, loanCalendarInstances);
+                }
+            }
+            
+            if (this.configurationDomainService.isRescheduleFutureRepaymentsEnabled() && calendarForUpdate.isRepeating()) {
+                // fetch all savings calendar instances associated with modifying calendar
+                final Collection<CalendarInstance> savingsCalendarInstances = this.calendarInstanceRepository.findByCalendarIdAndEntityTypeId(
+                        calendarId, CalendarEntityType.SAVINGS.getValue());
+
+                if (!CollectionUtils.isEmpty(savingsCalendarInstances)) {
+                    // update all savings associated with modifying calendar
+                    this.depositApplicationProcessWritePlatformService.applyRecurringDepositScheduleChanges(calendarForUpdate, savingsCalendarInstances);
                 }
             }
         }

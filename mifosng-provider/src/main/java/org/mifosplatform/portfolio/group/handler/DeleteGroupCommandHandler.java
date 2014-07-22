@@ -26,6 +26,6 @@ public class DeleteGroupCommandHandler implements NewCommandSourceHandler {
     @Transactional
     @Override
     public CommandProcessingResult processCommand(final JsonCommand command) {
-        return this.groupWritePlatformService.deleteGroup(command.entityId());
+        return this.groupWritePlatformService.deleteGroup(command.entityId(), command);
     }
 }
