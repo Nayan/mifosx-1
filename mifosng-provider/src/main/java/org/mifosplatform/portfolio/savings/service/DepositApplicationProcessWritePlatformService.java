@@ -5,8 +5,12 @@
  */
 package org.mifosplatform.portfolio.savings.service;
 
+import java.util.Collection;
+
 import org.mifosplatform.infrastructure.core.api.JsonCommand;
 import org.mifosplatform.infrastructure.core.data.CommandProcessingResult;
+import org.mifosplatform.portfolio.calendar.domain.Calendar;
+import org.mifosplatform.portfolio.calendar.domain.CalendarInstance;
 import org.mifosplatform.portfolio.savings.DepositAccountType;
 
 public interface DepositApplicationProcessWritePlatformService {
@@ -28,4 +32,6 @@ public interface DepositApplicationProcessWritePlatformService {
     CommandProcessingResult rejectApplication(Long accountId, JsonCommand command, DepositAccountType depositAccountType);
 
     CommandProcessingResult applicantWithdrawsFromApplication(Long accountId, JsonCommand command, DepositAccountType depositAccountType);
+    
+    void applyRecurringDepositScheduleChanges(Calendar calendar, Collection<CalendarInstance> savingsCalendarInstances);
 }

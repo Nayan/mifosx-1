@@ -12,6 +12,8 @@ import static org.mifosplatform.portfolio.savings.DepositsApiConstants.transferI
 
 import java.math.MathContext;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,6 +21,7 @@ import java.util.Set;
 
 import org.apache.commons.lang.StringUtils;
 import org.joda.time.LocalDate;
+import org.mifosplatform.infrastructure.configuration.domain.ConfigurationDomainService;
 import org.mifosplatform.infrastructure.core.api.JsonCommand;
 import org.mifosplatform.infrastructure.core.data.ApiParameterError;
 import org.mifosplatform.infrastructure.core.data.CommandProcessingResult;
@@ -30,8 +33,12 @@ import org.mifosplatform.infrastructure.core.exception.PlatformDataIntegrityExce
 import org.mifosplatform.infrastructure.core.serialization.FromJsonHelper;
 import org.mifosplatform.infrastructure.core.service.DateUtils;
 import org.mifosplatform.infrastructure.security.service.PlatformSecurityContext;
+import org.mifosplatform.organisation.holiday.domain.Holiday;
+import org.mifosplatform.organisation.holiday.domain.HolidayRepositoryWrapper;
 import org.mifosplatform.organisation.staff.domain.Staff;
 import org.mifosplatform.organisation.staff.domain.StaffRepositoryWrapper;
+import org.mifosplatform.organisation.workingdays.domain.WorkingDays;
+import org.mifosplatform.organisation.workingdays.domain.WorkingDaysRepositoryWrapper;
 import org.mifosplatform.portfolio.account.domain.AccountAssociations;
 import org.mifosplatform.portfolio.account.domain.AccountAssociationsRepository;
 import org.mifosplatform.portfolio.calendar.domain.Calendar;
@@ -40,7 +47,6 @@ import org.mifosplatform.portfolio.calendar.domain.CalendarFrequencyType;
 import org.mifosplatform.portfolio.calendar.domain.CalendarInstance;
 import org.mifosplatform.portfolio.calendar.domain.CalendarInstanceRepository;
 import org.mifosplatform.portfolio.calendar.domain.CalendarType;
-import org.mifosplatform.portfolio.calendar.service.CalendarUtils;
 import org.mifosplatform.portfolio.client.domain.AccountNumberGenerator;
 import org.mifosplatform.portfolio.client.domain.AccountNumberGeneratorFactory;
 import org.mifosplatform.portfolio.client.domain.Client;
@@ -67,6 +73,7 @@ import org.mifosplatform.portfolio.savings.domain.SavingsAccount;
 import org.mifosplatform.portfolio.savings.domain.SavingsAccountCharge;
 import org.mifosplatform.portfolio.savings.domain.SavingsAccountChargeAssembler;
 import org.mifosplatform.portfolio.savings.domain.SavingsAccountRepositoryWrapper;
+import org.mifosplatform.portfolio.savings.domain.SavingsAccountStatusType;
 import org.mifosplatform.portfolio.savings.domain.SavingsProduct;
 import org.mifosplatform.portfolio.savings.domain.SavingsProductRepository;
 import org.mifosplatform.portfolio.savings.exception.SavingsProductNotFoundException;
@@ -95,6 +102,9 @@ public class DepositApplicationProcessWritePlatformServiceJpaRepositoryImpl impl
     private final SavingsProductRepository savingsProductRepository;
     private final NoteRepository noteRepository;
     private final StaffRepositoryWrapper staffRepository;
+    private final HolidayRepositoryWrapper holidayRepository;
+    private final ConfigurationDomainService configurationDomainService;
+    private final WorkingDaysRepositoryWrapper workingDaysRepository;
     private final SavingsAccountApplicationTransitionApiJsonValidator savingsAccountApplicationTransitionApiJsonValidator;
     private final SavingsAccountChargeAssembler savingsAccountChargeAssembler;
     private final AccountAssociationsRepository accountAssociationsRepository;
@@ -103,11 +113,14 @@ public class DepositApplicationProcessWritePlatformServiceJpaRepositoryImpl impl
 
     @Autowired
     public DepositApplicationProcessWritePlatformServiceJpaRepositoryImpl(final PlatformSecurityContext context,
-            final SavingsAccountRepositoryWrapper savingAccountRepository, final DepositAccountAssembler depositAccountAssembler,
+            final SavingsAccountRepositoryWrapper savingAccountRepository,
+            final DepositAccountAssembler depositAccountAssembler,
             final DepositAccountDataValidator depositAccountDataValidator,
             final AccountNumberGeneratorFactory accountIdentifierGeneratorFactory, final ClientRepositoryWrapper clientRepository,
             final GroupRepository groupRepository, final SavingsProductRepository savingsProductRepository,
             final NoteRepository noteRepository, final StaffRepositoryWrapper staffRepository,
+            final HolidayRepositoryWrapper holidayRepository,
+            final ConfigurationDomainService configurationDomainService, final WorkingDaysRepositoryWrapper workingDaysRepository,
             final SavingsAccountApplicationTransitionApiJsonValidator savingsAccountApplicationTransitionApiJsonValidator,
             final SavingsAccountChargeAssembler savingsAccountChargeAssembler,
             final FixedDepositAccountRepository fixedDepositAccountRepository,
@@ -124,6 +137,9 @@ public class DepositApplicationProcessWritePlatformServiceJpaRepositoryImpl impl
         this.savingsProductRepository = savingsProductRepository;
         this.noteRepository = noteRepository;
         this.staffRepository = staffRepository;
+        this.holidayRepository = holidayRepository;
+        this.configurationDomainService = configurationDomainService;
+        this.workingDaysRepository = workingDaysRepository;
         this.savingsAccountApplicationTransitionApiJsonValidator = savingsAccountApplicationTransitionApiJsonValidator;
         this.savingsAccountChargeAssembler = savingsAccountChargeAssembler;
         this.fixedDepositAccountRepository = fixedDepositAccountRepository;
@@ -237,10 +253,11 @@ public class DepositApplicationProcessWritePlatformServiceJpaRepositoryImpl impl
             // details)
             final MathContext mc = MathContext.DECIMAL64;
             final Calendar calendar = calendarInstance.getCalendar();
-            final PeriodFrequencyType frequencyType = CalendarFrequencyType.from(CalendarUtils.getFrequency(calendar.getRecurrence()));
-            Integer frequency = CalendarUtils.getInterval(calendar.getRecurrence());
-            frequency = frequency == -1 ? 1 : frequency;
-            account.generateSchedule(frequencyType, frequency, calendar);
+            final boolean isHolidayEnabled = this.configurationDomainService.isRescheduleRepaymentsOnHolidaysEnabled();
+   		 	final WorkingDays workingDays = this.workingDaysRepository.findOne();
+   		 	List<Holiday> holidays = this.holidayRepository.findByOfficeIdAndGreaterThanDate(
+   		 			account.officeId(),	account.accountSubmittedOrActivationDate().toDate());
+            account.generateSchedule(calendar, isHolidayEnabled, holidays, workingDays);
             final boolean isPreMatureClosure = false;
             account.updateMaturityDateAndAmount(mc, isPreMatureClosure);
             account.validateApplicableInterestRate();
@@ -258,6 +275,31 @@ public class DepositApplicationProcessWritePlatformServiceJpaRepositoryImpl impl
             handleDataIntegrityIssues(command, dve);
             return CommandProcessingResult.empty();
         }
+    }
+    
+    @Transactional
+    @Override
+    public void applyRecurringDepositScheduleChanges(final Calendar calendar, final Collection<CalendarInstance> savingsCalendarInstances) {
+		 final boolean isHolidayEnabled = this.configurationDomainService.isRescheduleInstallmentsOnHolidaysEnabled();
+		 final WorkingDays workingDays = this.workingDaysRepository.findOne();
+		 final Collection<Integer> savingsStatuses = new ArrayList<>(Arrays.asList(SavingsAccountStatusType.SUBMITTED_AND_PENDING_APPROVAL.getValue(),
+				 SavingsAccountStatusType.APPROVED.getValue(), SavingsAccountStatusType.ACTIVE.getValue()));
+		 final Collection<Long> savingsIds = new ArrayList<>(savingsCalendarInstances.size());
+		 // loop through savingsCalendarInstances to get savings ids
+		 for (final CalendarInstance calendarInstance : savingsCalendarInstances) {
+			 savingsIds.add(calendarInstance.getEntityId());
+		 }
+		 final List<RecurringDepositAccount> depositAccounts = this.recurringDepositAccountRepository.findByIdsAndStatus(savingsIds,
+				 savingsStatuses);
+		 List<Holiday> holidays = null;
+         
+		 for (final RecurringDepositAccount depositAccount : depositAccounts) {
+		     if (depositAccount != null) {
+		    	 holidays = this.holidayRepository.findByOfficeIdAndGreaterThanDate(depositAccount.officeId(), depositAccount.accountSubmittedOrActivationDate().toDate());
+		    	 depositAccount.updateScheduleDates(calendar, isHolidayEnabled, holidays, workingDays);
+		         this.recurringDepositAccountRepository.save(depositAccount);
+		     }
+		 }
     }
 
     private CalendarInstance getCalendarInstance(final JsonCommand command, RecurringDepositAccount account) {
@@ -370,10 +412,11 @@ public class DepositApplicationProcessWritePlatformServiceJpaRepositoryImpl impl
                 final CalendarInstance calendarInstance = this.calendarInstanceRepository.findByEntityIdAndEntityTypeIdAndCalendarTypeId(
                         accountId, CalendarEntityType.SAVINGS.getValue(), CalendarType.COLLECTION.getValue());
                 final Calendar calendar = calendarInstance.getCalendar();
-                final PeriodFrequencyType frequencyType = CalendarFrequencyType.from(CalendarUtils.getFrequency(calendar.getRecurrence()));
-                Integer frequency = CalendarUtils.getInterval(calendar.getRecurrence());
-                frequency = frequency == -1 ? 1 : frequency;
-                account.generateSchedule(frequencyType, frequency, calendar);
+                final boolean isHolidayEnabled = this.configurationDomainService.isRescheduleRepaymentsOnHolidaysEnabled();
+       		 	final WorkingDays workingDays = this.workingDaysRepository.findOne();
+       		 	List<Holiday> holidays = this.holidayRepository.findByOfficeIdAndGreaterThanDate(
+       		 			account.officeId(),	account.accountSubmittedOrActivationDate().toDate());
+                account.generateSchedule(calendar, isHolidayEnabled, holidays, workingDays);
                 final boolean isPreMatureClosure = false;
                 account.updateMaturityDateAndAmount(mc, isPreMatureClosure);
                 account.validateApplicableInterestRate();

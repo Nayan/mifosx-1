@@ -340,6 +340,15 @@ public class CalendarUtils {
         if (isValidRecurringDate(recur, seedDate, oldRepaymentDate)) { return oldRepaymentDate; }
         return getNextRepaymentMeetingDate(recurringRule, seedDate, oldRepaymentDate, loanRepaymentInterval, frequency, workingDays);
     }
+    
+    public static LocalDate getNewInstallmentScheduleDate(final Calendar calendar,
+            final LocalDate oldDueDate, final WorkingDays workingDays) {
+        final Recur recur = CalendarUtils.getICalRecur(calendar.getRecurrence());
+        if (recur == null) { return null; }
+        final LocalDate seedDate = calendar.getStartDateLocalDate();
+        if (isValidRecurringDate(recur, seedDate, oldDueDate)) { return oldDueDate; }
+        return getNextScheduleDate(calendar, oldDueDate, workingDays);
+    }
 
     public static LocalDate getNextRepaymentMeetingDate(final String recurringRule, final LocalDate seedDate,
             final LocalDate repaymentDate, final Integer loanRepaymentInterval, final String frequency, final WorkingDays workingDays) {
@@ -463,7 +472,8 @@ public class CalendarUtils {
         return getNextRecurringDate(recur, seedDate, currentDate);
     }
 
-    public static LocalDate getNextScheduleDate(final Calendar calendar, final LocalDate startDate) {
+    public static LocalDate getNextScheduleDate(final Calendar calendar, final LocalDate startDate,
+    			final WorkingDays workingDays) {
         final Recur recur = CalendarUtils.getICalRecur(calendar.getRecurrence());
         if (recur == null) { return null; }
         LocalDate date = startDate;
@@ -472,8 +482,11 @@ public class CalendarUtils {
             date = date.plusDays(1);
         }
 
-        final LocalDate scheduleDate = getNextRecurringDate(recur, seedDate, date);
+        LocalDate newScheduleDate = getNextRecurringDate(recur, seedDate, date);
+        final LocalDate nextScheduleDate = getNextRecurringDate(recur, seedDate, newScheduleDate);
+        
+        newScheduleDate = WorkingDaysUtil.getOffSetDateIfNonWorkingDay(newScheduleDate, nextScheduleDate, workingDays);
 
-        return scheduleDate;
+        return newScheduleDate;
     }
 }

@@ -71,6 +71,22 @@ public class ConfigurationDomainServiceJpa implements ConfigurationDomainService
                 .findOneByNameWithNotFoundDetection(holidaysConfigurationProperty);
         return property.isEnabled();
     }
+    
+    @Override
+    public boolean isRescheduleFutureInstallmentsEnabled() {
+        final String rescheduleInstallmentsConfigurationProperty = "reschedule-future-installments";
+        final GlobalConfigurationProperty property = this.globalConfigurationRepository
+                .findOneByNameWithNotFoundDetection(rescheduleInstallmentsConfigurationProperty);
+        return property.isEnabled();
+    }
+    
+    @Override
+    public boolean isRescheduleInstallmentsOnHolidaysEnabled() {
+        final String holidaysConfigurationProperty = "reschedule-installments-on-holidays";
+        final GlobalConfigurationProperty property = this.globalConfigurationRepository
+                .findOneByNameWithNotFoundDetection(holidaysConfigurationProperty);
+        return property.isEnabled();
+    }
 
     @Override
     public boolean allowTransactionsOnHolidayEnabled() {

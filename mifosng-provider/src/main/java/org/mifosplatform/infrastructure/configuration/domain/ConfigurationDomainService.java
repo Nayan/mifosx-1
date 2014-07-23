@@ -16,6 +16,10 @@ public interface ConfigurationDomainService {
     boolean isRescheduleFutureRepaymentsEnabled();
 
     boolean isRescheduleRepaymentsOnHolidaysEnabled();
+    
+    boolean isRescheduleFutureInstallmentsEnabled();
+    
+    boolean isRescheduleInstallmentsOnHolidaysEnabled();
 
     boolean allowTransactionsOnHolidayEnabled();
 

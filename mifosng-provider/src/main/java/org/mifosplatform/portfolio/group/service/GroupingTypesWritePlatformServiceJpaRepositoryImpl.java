@@ -434,12 +434,15 @@ public class GroupingTypesWritePlatformServiceJpaRepositoryImpl implements Group
 
     @Transactional
     @Override
-    public CommandProcessingResult deleteGroup(final Long groupId) {
-
+    public CommandProcessingResult deleteGroup(final Long groupId, final JsonCommand command) {
+    	
         final Group groupForDelete = this.groupRepository.findOneWithNotFoundDetection(groupId);
 
         if (groupForDelete.isNotPending()) { throw new GroupMustBePendingToBeDeletedException(groupId); }
-
+        
+        if(command.entityName().equals("CENTER"))
+        	deleteCalendarDatesOnCenterCloseOrDelete(command);
+        
         final List<Note> relatedNotes = this.noteRepository.findByGroupId(groupId);
         this.noteRepository.deleteInBatch(relatedNotes);
 

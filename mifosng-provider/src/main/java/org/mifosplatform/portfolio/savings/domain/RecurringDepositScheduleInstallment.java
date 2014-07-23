@@ -223,4 +223,10 @@ public class RecurringDepositScheduleInstallment extends AbstractAuditableCustom
         this.obligationsMet = false;
         this.obligationsMetOnDate = null;
     }
+    
+    public void updateDueDate(final LocalDate newDueDate) {
+        if (newDueDate != null) {
+            this.dueDate = newDueDate.toDate();
+        }
+    }
 }
