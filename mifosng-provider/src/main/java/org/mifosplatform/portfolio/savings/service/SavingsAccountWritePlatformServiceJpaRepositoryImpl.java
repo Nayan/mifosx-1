@@ -344,7 +344,7 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
             final MathContext mc = new MathContext(10, RoundingMode.HALF_EVEN);
             boolean isInterestTransfer = false;
             account.postInterest(mc, today, isInterestTransfer);
-
+            
             // for generating transaction id's
             List<SavingsAccountTransaction> transactions = account.getTransactions();
             for (SavingsAccountTransaction accountTransaction : transactions) {

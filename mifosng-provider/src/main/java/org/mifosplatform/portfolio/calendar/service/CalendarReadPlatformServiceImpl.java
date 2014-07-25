@@ -9,6 +9,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 
 import org.joda.time.LocalDate;
@@ -30,8 +31,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
-
-import edu.emory.mathcs.backport.java.util.Collections;
 
 @Service
 public class CalendarReadPlatformServiceImpl implements CalendarReadPlatformService {
