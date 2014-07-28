@@ -27,6 +27,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.ListIterator;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -477,8 +478,11 @@ public class SavingsAccount extends AbstractPersistable<Long> {
     	
         SavingsAccountTransaction savingsTransaction = null;
         
-        for (final SavingsAccountTransaction transaction : this.transactions) {
-            if (transaction.isNotReversed() && transaction.occursOn(date)) {
+        ListIterator<SavingsAccountTransaction> iter = this.transactions.listIterator(this.transactions.size());
+
+        while (iter.hasPrevious()) {
+        	SavingsAccountTransaction transaction = iter.previous();
+        	if (transaction.isNotReversed() && transaction.occursOn(date)) {
             	savingsTransaction = transaction;
                 break;
             }
@@ -542,10 +546,12 @@ public class SavingsAccount extends AbstractPersistable<Long> {
         		final String defaultUserMessage = "No transactions were found on the specified date "
                         + getStartInterestCalculationDate().toString() + " for account number "
                         + this.accountNumber.toString() + " and resource id "
-                        + getId();
+                        + getId().toString();
         		
                 final ApiParameterError error = ApiParameterError.parameterError(
                         "error.msg.savingsaccount.transaction.incorrect.start.interest.calculation.date", defaultUserMessage, "transactionDate",
+                        getId().toString(),
+                        this.accountNumber.toString(),
                         getStartInterestCalculationDate().toString());
 
                 final List<ApiParameterError> dataValidationErrors = new ArrayList<>();
