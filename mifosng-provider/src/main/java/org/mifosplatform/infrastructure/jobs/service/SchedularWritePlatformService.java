@@ -4,6 +4,8 @@ import java.util.List;
 
 import org.mifosplatform.infrastructure.core.api.JsonCommand;
 import org.mifosplatform.infrastructure.core.data.CommandProcessingResult;
+import org.mifosplatform.infrastructure.core.data.GlobalEntityType;
+import org.mifosplatform.infrastructure.core.exception.PlatformApiDataValidationException;
 import org.mifosplatform.infrastructure.jobs.domain.ScheduledJobDetail;
 import org.mifosplatform.infrastructure.jobs.domain.ScheduledJobRunHistory;
 import org.mifosplatform.infrastructure.jobs.domain.SchedulerDetail;
@@ -30,4 +32,6 @@ public interface SchedularWritePlatformService {
 
     public boolean processJobDetailForExecution(String jobKey, String triggerType);
 
+    public void persistStepError(PlatformApiDataValidationException padve,
+    		GlobalEntityType entityType, Long jobId);
 }
