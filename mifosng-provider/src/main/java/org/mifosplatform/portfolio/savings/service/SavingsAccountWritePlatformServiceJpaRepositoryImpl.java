@@ -28,6 +28,7 @@ import org.joda.time.format.DateTimeFormat;
 import org.joda.time.format.DateTimeFormatter;
 import org.mifosplatform.accounting.journalentry.service.JournalEntryWritePlatformService;
 import org.mifosplatform.infrastructure.core.api.JsonCommand;
+import org.mifosplatform.infrastructure.core.data.ApiErrorMessageArg;
 import org.mifosplatform.infrastructure.core.data.ApiParameterError;
 import org.mifosplatform.infrastructure.core.data.CommandProcessingResult;
 import org.mifosplatform.infrastructure.core.data.CommandProcessingResultBuilder;
@@ -35,7 +36,10 @@ import org.mifosplatform.infrastructure.core.data.DataValidatorBuilder;
 import org.mifosplatform.infrastructure.core.exception.PlatformApiDataValidationException;
 import org.mifosplatform.infrastructure.core.exception.PlatformServiceUnavailableException;
 import org.mifosplatform.infrastructure.core.service.DateUtils;
+import org.mifosplatform.infrastructure.core.service.ThreadLocalContextUtil;
 import org.mifosplatform.infrastructure.jobs.annotation.CronTarget;
+import org.mifosplatform.infrastructure.jobs.domain.ScheduledJobStepException;
+import org.mifosplatform.infrastructure.jobs.domain.ScheduledJobStepExceptionRepository;
 import org.mifosplatform.infrastructure.jobs.service.JobName;
 import org.mifosplatform.infrastructure.security.service.PlatformSecurityContext;
 import org.mifosplatform.organisation.holiday.service.HolidayWritePlatformService;
@@ -78,6 +82,8 @@ import org.mifosplatform.portfolio.savings.exception.SavingsAccountClosingNotAll
 import org.mifosplatform.portfolio.savings.exception.SavingsAccountTransactionNotFoundException;
 import org.mifosplatform.portfolio.savings.exception.TransactionUpdateNotAllowedException;
 import org.mifosplatform.useradministration.domain.AppUser;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -86,6 +92,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements SavingsAccountWritePlatformService {
+	
+	private final static Logger logger = LoggerFactory.getLogger(SavingsAccountWritePlatformServiceJpaRepositoryImpl.class);
 
     private final PlatformSecurityContext context;
     private final SavingsAccountRepository savingAccountRepository;
@@ -102,6 +110,7 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
     private final AccountAssociationsReadPlatformService accountAssociationsReadPlatformService;
     private final ChargeRepositoryWrapper chargeRepository;
     private final SavingsAccountChargeRepositoryWrapper savingsAccountChargeRepository;
+    private final ScheduledJobStepExceptionRepository scheduledJobStepExceptionRepository;
     private final HolidayWritePlatformService holidayWritePlatformService;
     private final WorkingDaysWritePlatformService workingDaysWritePlatformService;
 
@@ -119,6 +128,7 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
             final AccountTransfersReadPlatformService accountTransfersReadPlatformService,
             final AccountAssociationsReadPlatformService accountAssociationsReadPlatformService,
             final ChargeRepositoryWrapper chargeRepository, final SavingsAccountChargeRepositoryWrapper savingsAccountChargeRepository,
+            final ScheduledJobStepExceptionRepository scheduledJobStepExceptionRepository,
             final HolidayWritePlatformService holidayWritePlatformService,
             final WorkingDaysWritePlatformService workingDaysWritePlatformService) {
         this.context = context;
@@ -136,6 +146,7 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
         this.accountAssociationsReadPlatformService = accountAssociationsReadPlatformService;
         this.chargeRepository = chargeRepository;
         this.savingsAccountChargeRepository = savingsAccountChargeRepository;
+        this.scheduledJobStepExceptionRepository = scheduledJobStepExceptionRepository;
         this.holidayWritePlatformService = holidayWritePlatformService;
         this.workingDaysWritePlatformService = workingDaysWritePlatformService;
     }
@@ -330,7 +341,17 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
     private void postInterestInBatch(final Page<SavingsAccount> accounts) {
     	for(final SavingsAccount savingsAccount : accounts) {
     		this.savingAccountAssembler.assignSavingAccountHelpers(savingsAccount);
-    		postInterest(savingsAccount);
+    		try{
+    			postInterest(savingsAccount);
+    		} catch (PlatformApiDataValidationException padve) {
+    			ApiParameterError error = padve.getErrors().get(0);
+    			List<ApiErrorMessageArg> args = error.getArgs();
+//    			ScheduledJobStepException exception = new ScheduledJobStepException( ,
+//    					error.getDefaultUserMessage(), args.get(0), );
+//    			scheduledJobStepExceptionRepository.save(exception);
+    			logger.info(ThreadLocalContextUtil.getTenant().getName() + 
+    					padve.getErrors().get(0).getDefaultUserMessage());
+    		}
     	}
     }
 
@@ -344,7 +365,7 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
             final MathContext mc = new MathContext(10, RoundingMode.HALF_EVEN);
             boolean isInterestTransfer = false;
             account.postInterest(mc, today, isInterestTransfer);
-
+            
             // for generating transaction id's
             List<SavingsAccountTransaction> transactions = account.getTransactions();
             for (SavingsAccountTransaction accountTransaction : transactions) {
