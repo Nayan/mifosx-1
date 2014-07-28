@@ -31,4 +31,8 @@ public interface SavingsAccountRepository extends JpaRepository<SavingsAccount, 
     
     @Query("from SavingsAccount sa where sa.id = :accountId and sa.depositType = :depositAccountTypeId")
     SavingsAccount findByIdAndDepositAccountType(@Param("accountId") Long accountId, @Param("depositAccountTypeId") Integer depositAccountTypeId);
+    
+    @Query("from SavingsAccount sa where sa.id = :accountId")
+    SavingsAccount findById(@Param("accountId") Long accountId);
+    
 }

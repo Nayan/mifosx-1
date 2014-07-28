@@ -221,7 +221,26 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
                 .with(changes) //
                 .build();
     }
+    
+    
+    @Transactional
+    @Override
+    public void deposit(final SavingsAccountTransactionDTO savingsAccountTransactionDTO, DateTimeFormatter fmt ) {
+    	
+    	boolean isAccountTransfer = false;
+        boolean isRegularTransaction = true;
+        PaymentDetail paymentDetail = null;
+        BigDecimal transactionAmount = savingsAccountTransactionDTO.getTransactionAmount();
+        final SavingsAccount account = this.savingAccountAssembler.assembleFrom(savingsAccountTransactionDTO.getSavingsAccountId());
+        LocalDate transactionDate = savingsAccountTransactionDTO.getTransactionDate();
 
+        
+        final SavingsAccountTransaction deposit = this.savingsAccountDomainService.handleDeposit(account, fmt, transactionDate,
+                transactionAmount, paymentDetail, isAccountTransfer, isRegularTransaction);
+    	
+    }
+
+    
     private Long saveTransactionToGenerateTransactionId(final SavingsAccountTransaction transaction) {
         this.savingsAccountTransactionRepository.save(transaction);
         return transaction.getId();
