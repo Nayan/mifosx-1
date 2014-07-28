@@ -474,7 +474,7 @@ public class SavingsAccount extends AbstractPersistable<Long> {
         return postingTransation;
     }
     
-    protected SavingsAccountTransaction findTransactionFor(final LocalDate date) {
+    protected SavingsAccountTransaction findLastTransactionFor(final LocalDate date) {
     	
         SavingsAccountTransaction savingsTransaction = null;
         
@@ -540,7 +540,7 @@ public class SavingsAccount extends AbstractPersistable<Long> {
         Money periodStartingBalance;
         if(this.startInterestCalculationDate != null) {
         	LocalDate startInterestCalculationDate = new LocalDate(this.startInterestCalculationDate);
-        	final SavingsAccountTransaction transaction = findTransactionFor(startInterestCalculationDate);
+        	final SavingsAccountTransaction transaction = findLastTransactionFor(startInterestCalculationDate);
         	
         	if(transaction == null) {
         		final String defaultUserMessage = "No transactions were found on the specified date "
@@ -550,7 +550,7 @@ public class SavingsAccount extends AbstractPersistable<Long> {
         		
                 final ApiParameterError error = ApiParameterError.parameterError(
                         "error.msg.savingsaccount.transaction.incorrect.start.interest.calculation.date", defaultUserMessage, "transactionDate",
-                        getId().toString(),
+                        getId(),
                         this.accountNumber.toString(),
                         getStartInterestCalculationDate().toString());
 
@@ -748,6 +748,9 @@ public class SavingsAccount extends AbstractPersistable<Long> {
         return activationLocalDate;
     }
     
+    //Enables migration use-case where interest needs to be
+    //calculated from a specified date, otherwise it defaults
+    //to activation date.
     public LocalDate getStartInterestCalculationDate() {
         LocalDate startInterestCalculationLocalDate = null;
         if (this.startInterestCalculationDate != null) {

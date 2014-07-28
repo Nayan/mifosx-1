@@ -5,13 +5,19 @@ import java.util.List;
 import java.util.Map;
 
 import org.mifosplatform.infrastructure.core.api.JsonCommand;
+import org.mifosplatform.infrastructure.core.data.ApiErrorMessageArg;
+import org.mifosplatform.infrastructure.core.data.ApiParameterError;
 import org.mifosplatform.infrastructure.core.data.CommandProcessingResult;
 import org.mifosplatform.infrastructure.core.data.CommandProcessingResultBuilder;
+import org.mifosplatform.infrastructure.core.data.GlobalEntityType;
+import org.mifosplatform.infrastructure.core.exception.PlatformApiDataValidationException;
 import org.mifosplatform.infrastructure.jobs.data.JobDetailDataValidator;
 import org.mifosplatform.infrastructure.jobs.domain.ScheduledJobDetail;
 import org.mifosplatform.infrastructure.jobs.domain.ScheduledJobDetailRepository;
 import org.mifosplatform.infrastructure.jobs.domain.ScheduledJobRunHistory;
 import org.mifosplatform.infrastructure.jobs.domain.ScheduledJobRunHistoryRepository;
+import org.mifosplatform.infrastructure.jobs.domain.ScheduledJobStepException;
+import org.mifosplatform.infrastructure.jobs.domain.ScheduledJobStepExceptionRepository;
 import org.mifosplatform.infrastructure.jobs.domain.SchedulerDetail;
 import org.mifosplatform.infrastructure.jobs.domain.SchedulerDetailRepository;
 import org.mifosplatform.infrastructure.jobs.exception.JobNotFoundException;
@@ -27,16 +33,20 @@ public class SchedularWritePlatformServiceJpaRepositoryImpl implements Schedular
     private final ScheduledJobRunHistoryRepository scheduledJobRunHistoryRepository;
 
     private final SchedulerDetailRepository schedulerDetailRepository;
+    
+    private final ScheduledJobStepExceptionRepository scheduledJobStepExceptionRepository;
 
     private final JobDetailDataValidator dataValidator;
 
     @Autowired
     public SchedularWritePlatformServiceJpaRepositoryImpl(final ScheduledJobDetailRepository scheduledJobDetailsRepository,
             final ScheduledJobRunHistoryRepository scheduledJobRunHistoryRepository, final JobDetailDataValidator dataValidator,
-            final SchedulerDetailRepository schedulerDetailRepository) {
+            final SchedulerDetailRepository schedulerDetailRepository,
+            final ScheduledJobStepExceptionRepository scheduledJobStepExceptionRepository) {
         this.scheduledJobDetailsRepository = scheduledJobDetailsRepository;
         this.scheduledJobRunHistoryRepository = scheduledJobRunHistoryRepository;
         this.schedulerDetailRepository = schedulerDetailRepository;
+        this.scheduledJobStepExceptionRepository = scheduledJobStepExceptionRepository;
         this.dataValidator = dataValidator;
     }
 
@@ -130,6 +140,18 @@ public class SchedularWritePlatformServiceJpaRepositoryImpl implements Schedular
         }
         this.scheduledJobDetailsRepository.save(scheduledJobDetail);
         return isStopExecution;
+    }
+    
+    @Override
+    public void persistStepError(PlatformApiDataValidationException padve,
+    		GlobalEntityType entityType, Long jobId) {
+    	ApiParameterError error = padve.getErrors().get(0);
+		List<ApiErrorMessageArg> args = error.getArgs();
+		
+		ScheduledJobStepException exception = new ScheduledJobStepException( jobId,
+				new Date(), error.getDefaultUserMessage(), (Long)args.get(0).getValue(),
+				entityType.getValue());
+		scheduledJobStepExceptionRepository.save(exception);
     }
 
 }
