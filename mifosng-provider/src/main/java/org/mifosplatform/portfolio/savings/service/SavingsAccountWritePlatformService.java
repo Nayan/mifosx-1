@@ -14,6 +14,7 @@ import org.mifosplatform.infrastructure.core.data.CommandProcessingResult;
 import org.mifosplatform.infrastructure.jobs.exception.JobExecutionException;
 import org.mifosplatform.organisation.office.domain.Office;
 import org.mifosplatform.organisation.staff.domain.Staff;
+import org.mifosplatform.portfolio.savings.data.SavingsAccountTransactionDTO;
 import org.mifosplatform.portfolio.savings.domain.SavingsAccount;
 import org.mifosplatform.portfolio.savings.domain.SavingsAccountTransaction;
 
@@ -63,4 +64,8 @@ public interface SavingsAccountWritePlatformService {
 
     void processPostActiveActions(SavingsAccount account, DateTimeFormatter fmt, Set<Long> existingTransactionIds,
             Set<Long> existingReversedTransactionIds);
+
+	void deposit(SavingsAccountTransactionDTO savingsAccountTransactionDTO,
+			DateTimeFormatter fmt);
+	
 }
