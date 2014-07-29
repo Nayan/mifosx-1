@@ -41,6 +41,7 @@ import org.mifosplatform.portfolio.group.data.CenterData;
 import org.mifosplatform.portfolio.group.data.GroupGeneralData;
 import org.mifosplatform.portfolio.group.service.CenterReadPlatformService;
 import org.mifosplatform.portfolio.group.service.GroupReadPlatformService;
+import org.mifosplatform.portfolio.loanaccount.domain.LoanStatus;
 import org.mifosplatform.portfolio.loanproduct.data.LoanProductData;
 import org.mifosplatform.portfolio.meeting.attendance.service.AttendanceDropdownReadPlatformService;
 import org.mifosplatform.portfolio.meeting.attendance.service.AttendanceEnumerations;
@@ -102,15 +103,28 @@ public class CollectionSheetReadPlatformServiceImpl implements CollectionSheetRe
         JLGCollectionSheetData jlgCollectionSheetData = null;
         JLGCollectionSheetFlatData prevCollectioSheetFlatData = null;
         JLGCollectionSheetFlatData corrCollectioSheetFlatData = null;
-        final Set<LoanProductData> loanProducts = new HashSet<>();
+        final Set<LoanProductData> loanProductsDueForRepayment = new HashSet<>();
+        final Set<LoanProductData> loanProductsDueForDisbursal = new HashSet<>();
+        
+        
         if (jlgCollectionSheetFlatData != null) {
 
             for (final JLGCollectionSheetFlatData collectionSheetFlatData : jlgCollectionSheetFlatData) {
 
-                if (collectionSheetFlatData.getProductId() != null) {
-                    loanProducts.add(LoanProductData.lookupWithCurrency(collectionSheetFlatData.getProductId(),
+            	// List of Products due for repayment
+                if (LoanStatus.ACTIVE.getValue().equals(collectionSheetFlatData.getAccountStatusId()) 
+                		&& collectionSheetFlatData.getProductId() != null) {
+                	loanProductsDueForRepayment.add(LoanProductData.lookupWithCurrency(collectionSheetFlatData.getProductId(),
                             collectionSheetFlatData.getProductShortName(), collectionSheetFlatData.getCurrency()));
                 }
+                
+                // List of Products due for disbursal
+                if (LoanStatus.APPROVED.getValue().equals(collectionSheetFlatData.getAccountStatusId()) 
+                		&& collectionSheetFlatData.getProductId() != null) {
+                	loanProductsDueForDisbursal.add(LoanProductData.lookupWithCurrency(collectionSheetFlatData.getProductId(),
+                            collectionSheetFlatData.getProductShortName(), collectionSheetFlatData.getCurrency()));
+                }
+                
                 corrCollectioSheetFlatData = collectionSheetFlatData;
 
                 if (firstTime || collectionSheetFlatData.getGroupId().equals(prevGroupId)) {
@@ -167,8 +181,8 @@ public class CollectionSheetReadPlatformServiceImpl implements CollectionSheetRe
                 jlgGroupsData.add(jlgGroupData);
             }
 
-            jlgCollectionSheetData = JLGCollectionSheetData.instance(dueDate, loanProducts, jlgGroupsData,
-                    this.attendanceDropdownReadPlatformService.retrieveAttendanceTypeOptions());
+            jlgCollectionSheetData = JLGCollectionSheetData.instance(dueDate, loanProductsDueForRepayment,loanProductsDueForDisbursal,
+            		jlgGroupsData, this.attendanceDropdownReadPlatformService.retrieveAttendanceTypeOptions());
         }
 
         return jlgCollectionSheetData;
@@ -453,8 +467,9 @@ public class CollectionSheetReadPlatformServiceImpl implements CollectionSheetRe
                     .append("rc.`name` as currencyName, ")
                     .append("rc.display_symbol as currencyDisplaySymbol, ")
                     .append("rc.internationalized_name_code as currencyNameCode, ")
-                    .append("sum(ifnull(mss.deposit_amount,0) - ifnull(mss.deposit_amount_completed_derived,0)) as dueAmount ")
-
+                    .append("sum( ifnull(sac.amount_outstanding_derived,0) + ")  					// Fees dues 
+                    .append("     ifnull(mss.deposit_amount,0) - ")              					// Mandatory savings dues
+                    .append("     ifnull(mss.deposit_amount_completed_derived,0)) as dueAmount ")	// Mandatory savings paid
                     .append("FROM m_group gp ")
                     .append("LEFT JOIN m_office of ON of.id = gp.office_id AND of.hierarchy like :officeHierarchy ")
                     .append("JOIN m_group_level gl ON gl.id = gp.level_Id ")
@@ -463,9 +478,10 @@ public class CollectionSheetReadPlatformServiceImpl implements CollectionSheetRe
                     .append("JOIN m_client cl ON cl.id = gc.client_id ")
                     .append("JOIN m_savings_account sa ON sa.client_id=cl.id and sa.status_enum=300 ")
                     .append("JOIN m_savings_product sp ON sa.product_id=sp.id ")
-                    .append("JOIN m_deposit_account_recurring_detail dard ON sa.id = dard.savings_account_id AND dard.is_mandatory = true AND dard.is_calendar_inherited = true ")
-                    .append("JOIN m_mandatory_savings_schedule mss ON mss.savings_account_id=sa.id AND mss.duedate <= :dueDate ")
-                    .append("LEFT JOIN m_currency rc on rc.`code` = sa.currency_code ");
+                    .append("LEFT JOIN m_deposit_account_recurring_detail dard ON sa.id = dard.savings_account_id AND dard.is_mandatory = true AND dard.is_calendar_inherited = true ")
+                    .append("LEFT JOIN m_mandatory_savings_schedule mss ON mss.savings_account_id=sa.id AND mss.duedate <= :dueDate AND completed_derived <> 1 ")
+                    .append("LEFT JOIN m_currency rc on rc.`code` = sa.currency_code ")
+                    .append("LEFT JOIN m_savings_account_charge as sac ON sac.savings_account_id = sa.id AND sac.charge_due_date <= :dueDate AND sac.is_active = 1 ");
 
             if (isCenterCollection) {
                 sql.append("WHERE gp.parent_id = :centerId ");

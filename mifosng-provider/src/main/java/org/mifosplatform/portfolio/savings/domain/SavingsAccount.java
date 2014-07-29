@@ -2278,4 +2278,25 @@ public class SavingsAccount extends AbstractPersistable<Long> {
         }
         return savingsAccountCharge;
     }
+    
+    public boolean isSavingsAccount() {
+    	return DepositAccountType.SAVINGS_DEPOSIT.getValue().equals(this.depositType);
+    }
+
+    /*
+    public boolean isMandatorySavingsAccount() {
+    	associate m_deposit_account_recurring_detail table and fetch is_mandatory column from it to derive isMandatorySavingsAccount  
+    }
+    */
+    
+    public boolean isRDAccount() {
+    	return DepositAccountType.RECURRING_DEPOSIT.getValue().equals(this.depositType);    
+    }
+
+    public boolean isFDAccount() {
+    	return DepositAccountType.FIXED_DEPOSIT.getValue().equals(this.depositType);    
+    }
+    
+
+    
 }
